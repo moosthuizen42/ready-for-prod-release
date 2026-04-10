@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Production Deployment Readiness Checker</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        padding: 24px;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: monospace;
+        background: #0c0b07;
+        color: #9dff9d;
+      }
+
+      .app {
+        width: 100%;
+        max-width: 760px;
+        text-align: left;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 20px;
+        color: #f2f2f2;
+        font-family: Verdana, Geneva, sans-serif;
+        font-weight: 600;
+      }
+
+      .subtitle {
+        margin: 4px 0 24px;
+        color: #d7d7d7;
+        font-family: Verdana, Geneva, sans-serif;
+      }
+
+      #repl {
+        max-width: 760px;
+        min-height: 320px;
+        position: relative;
+        overflow: hidden;
+        padding: 16px;
+        font-family: "Courier New", Courier, monospace;
+        background: #001300;
+        color: #6dff6d;
+        border: 1px solid #1f7a1f;
+        border-radius: 0;
+        text-align: left;
+      }
+
+      #repl::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        pointer-events: none;
+        background-image: linear-gradient(
+          to bottom,
+          rgba(0, 0, 0, 0.16) 0,
+          rgba(0, 0, 0, 0.16) 2px,
+          rgba(0, 0, 0, 0) 2px,
+          rgba(0, 0, 0, 0) 4px
+        );
+        background-size: 100% 4px;
+        opacity: 0.35;
+      }
+
+      #repl::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        pointer-events: none;
+        background: rgba(120, 255, 120, 0);
+      }
+
+      .line {
+        white-space: pre-wrap;
+        word-break: break-word;
+        margin: 0 0 6px;
+      }
+
+      .command {
+        color: #8eff8e;
+      }
+
+      .output {
+        color: #63d863;
+        margin-left: 2ch;
+      }
+
+      .loading {
+        color: #9cff9c;
+        margin-left: 2ch;
+      }
+
+      .error {
+        color: #ff8e8e;
+        margin-left: 2ch;
+      }
+
+      .failure {
+        color: #ff3b3b;
+        margin-left: 2ch;
+      }
+
+      .success {
+        color: #9cff9c;
+        margin-left: 2ch;
+        font-weight: 700;
+      }
+
+      .spacer {
+        height: 12px;
+        margin: 0;
+      }
+
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <h1>Production Deployment Readiness Checker</h1>
+      <p class="subtitle">v1.42</p>
+      <div id="repl" aria-live="polite"></div>
+      <noscript>This page needs JavaScript enabled.</noscript>
+    </div>
+
+    <script>
+      (function () {
+        var currentDate;
+        var readyForDeploy;
+
+        function loadDateFnsFromCdn() {
+          return new Promise(function (resolve, reject) {
+            if (window.dateFns) {
+              resolve();
+              return;
+            }
+
+            var scriptEl = document.createElement('script');
+            scriptEl.src = 'https://cdn.jsdelivr.net/npm/date-fns@4.1.0/cdn.min.js';
+            scriptEl.async = true;
+            scriptEl.onload = function () {
+              resolve();
+            };
+            scriptEl.onerror = function () {
+              reject(new Error('Failed to load date-fns from CDN.'));
+            };
+            document.head.appendChild(scriptEl);
+          });
+        }
+
+        var steps = [
+          {
+            command: 'Initializing analysis engine',
+            executedCode: 'const { isFriday } = await import("date-fns")',
+            run: function () {
+              return loadDateFnsFromCdn().then(function () {
+                window.isFriday = function () {
+                  return window.dateFns.isFriday(currentDate);
+                };
+              });
+            }
+          },
+          {
+            command: 'Gathering current project state',
+            executedCode: 'const currentDate = new Date()',
+            run: function () {
+              currentDate = new Date();
+              return Promise.resolve();
+            }
+          },
+          {
+            command: 'Executing readiness analysis',
+            executedCode: 'const readyForDeploy = isFriday(currentDate)',
+            run: function () {
+              readyForDeploy = window.isFriday();
+              return Promise.resolve();
+            }
+          }
+        ];
+
+        var replEl = document.getElementById('repl');
+        if (!replEl) {
+          return;
+        }
+
+        function addLine(text, className) {
+          var lineEl = document.createElement('div');
+          lineEl.className = 'line ' + className;
+          lineEl.textContent = text;
+          replEl.appendChild(lineEl);
+          replEl.scrollTop = replEl.scrollHeight;
+          return lineEl;
+        }
+
+        var stepIndex = 0;
+        var finalMessageShown = false;
+        var stepDelayMs = 350;
+        var loadingTickMs = 180;
+        var stepDurationMs = 5000;
+
+        function makeDots(count) {
+          if (count <= 0) {
+            return '';
+          }
+          return new Array(count + 1).join('.');
+        }
+
+        function waitForStepDuration() {
+          return new Promise(function (resolve) {
+            setTimeout(resolve, stepDurationMs);
+          });
+        }
+
+        function renderNextStep() {
+          if (stepIndex >= steps.length) {
+            if (!finalMessageShown) {
+              addLine('', 'spacer');
+              if (readyForDeploy === true) {
+                addLine('✓✓✓ Success! Your code is ready to be deployed to production!', 'success');
+              } else {
+                addLine('✗ ALERT: Deployment NOT recommended. Your code is not ready for production!', 'failure');
+              }
+              finalMessageShown = true;
+            }
+            return;
+          }
+
+          var step = steps[stepIndex];
+          var loadingLine;
+          var dotCount = 0;
+          var dotDirection = 1;
+
+          addLine('> ' + step.command, 'command');
+          loadingLine = addLine('loading', 'loading');
+
+          var loadingTimer = setInterval(function () {
+            if (dotCount >= 3) {
+              dotDirection = -1;
+            } else if (dotCount <= 0) {
+              dotDirection = 1;
+            }
+
+            dotCount += dotDirection;
+            loadingLine.textContent = 'loading' + makeDots(dotCount);
+            replEl.scrollTop = replEl.scrollHeight;
+          }, loadingTickMs);
+
+          Promise.all([step.run(), waitForStepDuration()]).then(function () {
+            clearInterval(loadingTimer);
+            if (loadingLine.parentNode) {
+              loadingLine.parentNode.removeChild(loadingLine);
+            }
+
+            addLine(step.executedCode, 'output');
+            addLine('✓ Done', 'loading');
+            stepIndex += 1;
+            setTimeout(renderNextStep, stepDelayMs);
+          }).catch(function (error) {
+            clearInterval(loadingTimer);
+            if (loadingLine.parentNode) {
+              loadingLine.parentNode.removeChild(loadingLine);
+            }
+
+            addLine('Error: ' + error.message, 'error');
+          });
+        }
+
+        renderNextStep();
+      })();
+    </script>
+  </body>
+</html>
