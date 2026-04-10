@@ -4,5 +4,5 @@ This is a small but powerful utility that performs a detailed check on whether y
 
 ## How to use
 
-Before deploying to production, run this tool by going to <insert link here>.
+Before deploying to production, run this tool by going to <https://moosthuizen42.github.io/ready-for-prod-deploy>.
 
